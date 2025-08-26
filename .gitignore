@@ -1,0 +1,18 @@
+# Dependencies
+# This folder can be huge and is easily recreated by running 'npm install'
+node_modules/
+
+# Environment Variables
+# CRITICAL: This file contains secret keys, passwords, and other sensitive data.
+# NEVER commit this file to your repository.
+.env
+
+# Logs
+# Log files are specific to your local machine and don't belong in the repo.
+*.log
+npm-debug.log*
+
+# Operating System Files
+# These are generated automatically by macOS and Windows.
+.DS_Store
+Thumbs.db
