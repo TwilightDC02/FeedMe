@@ -67,8 +67,6 @@ async function scrapeBpiPromos() {
       const title = $('h1.content__heading').text().trim();
       const body = $('.text.aem-GridColumn--default--12 > div[data-cmp-data-layer]');
       const bodyText = body.text().trim();
-      // const ulPromo = body.find('ul').text();
-      // const pPromo = body.find('p').text();
 
       const mechanicsHeader = body.find('h3:contains("Promo Mechanics")');
       const cardText = mechanicsHeader.nextAll('ul').text().trim();
