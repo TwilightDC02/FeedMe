@@ -1,4 +1,4 @@
-function segregatePromoText(bodyText) {
+function getPromoPeriod(bodyText) {
   // --- 1. Extract the Promo Period ---
   let promoPeriod = 'Not found';
   const periodMatch = bodyText.match(/The Promo Period is from (.*?)\n/);
@@ -6,18 +6,8 @@ function segregatePromoText(bodyText) {
     promoPeriod = periodMatch[1].trim();
   }
 
-  // --- 2. Extract the Offer Details ---
-  let offerDetails = 'Not found';
-  const offerMatch = bodyText.match(/Promo Offer\n([\s\S]*?)Promo Mechanics/);
-  if (offerMatch && offerMatch[1]) {
-    offerDetails = offerMatch[1]
-      .replace(/\n\s*\n/g, '\n') // Remove extra blank lines
-      .trim();
-  }
-
   return {
-    promoPeriod,
-    offerDetails,
+    promoPeriod
   };
 }
 
@@ -34,4 +24,4 @@ function listCards(cardText) {
 }
 
 // Make the function available to other files
-module.exports = { segregatePromoText, listCards };
+module.exports = { getPromoPeriod, listCards };

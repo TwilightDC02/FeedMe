@@ -1,7 +1,7 @@
 const puppeteer = require('puppeteer');
 const cheerio = require('cheerio');
 
-const { segregatePromoText } = require('./bpi-parser.js');
+const { getPromoPeriod } = require('./bpi-parser.js');
 const { listCards } = require('./bpi-parser.js');
 
 async function scrapeBpiPromos() {
@@ -52,12 +52,11 @@ async function scrapeBpiPromos() {
     links = links.slice(4); // Skip the first four promos
     return links;
   }, baseUrl);
-  console.log('Collected promo links:', promoLinks);
-  
+  console.log(`Found ${promoLinks.length} promo links.`);  
 
 
   const allPromoDetails = [];
-  // Getting the details of each promo
+  // TESTING: Only processing a single link
   const link = promoLinks[1];
   try{
       await page.goto(link, { waitUntil: 'networkidle2' });
@@ -66,19 +65,36 @@ async function scrapeBpiPromos() {
 
       const title = $('h1.content__heading').text().trim();
       const body = $('.text.aem-GridColumn--default--12 > div[data-cmp-data-layer]');
-      const bodyText = body.text().trim();
 
-      const mechanicsHeader = body.find('h3:contains("Promo Mechanics")');
-      const cardText = mechanicsHeader.nextAll('ul').text().trim();
+      const bodyText = body.text();
+      const promoPeriod = getPromoPeriod(bodyText).promoPeriod;
 
-      const structuredDetails = segregatePromoText(bodyText);
+      const offerMarker = body.find('h3:contains("Promo Offer")');
+      const offerHeader = offerMarker.next('p').text().trim();
+      const offerUl = offerMarker.nextAll('ul').first();
+      const offerDetails = [];
+
+      offerUl.find('li').each((i, elem) => {
+        // Iterates through each <li> element within the <ul>. Clones it, and removes nested <ul> element.
+
+        const listItemClone = $(elem).clone();
+        listItemClone.children('ul').remove(); // Remove any nested <ul> elements
+        const cleanedListItem = listItemClone.text().trim();
+        
+        offerDetails.push(cleanedListItem);
+      });
+
+      const cardMarker = body.find('h3:contains("Promo Mechanics")');
+      const cardText = cardMarker.nextAll('ul').text().trim();
+
       const structuredCards = listCards(cardText);
-
 
       allPromoDetails.push({
         title,
         link,
-        structuredDetails,
+        promoPeriod,
+        offerHeader,
+        offerDetails,
         structuredCards
       });
 
