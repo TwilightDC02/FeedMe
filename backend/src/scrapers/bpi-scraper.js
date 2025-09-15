@@ -1,9 +1,9 @@
 const puppeteer = require('puppeteer');
 const cheerio = require('cheerio');
 
-const { getPromoPeriod } = require('./bpi-parser.js');
+const { getPromoPeriod, normalizeOfferDetails } = require('./bpi-parser.js');
 
-async function scrapeBpiPromos() {
+async function fetchAllPromoLinks() {
   let browser;
   try {
     // STAGE 1: Browser initialization and page navigation
@@ -21,7 +21,6 @@ async function scrapeBpiPromos() {
     await page.waitForSelector('.social-share--component-link.ga'); // Ensures at least one promo card is loaded
     console.log('Page loaded, starting to scrape...');
     
-    
     // STAGE 2: Loading all of the promo cards by clicking "Load More" button    
     const loadMoreButtonSelector = '#All-tabpanel .btn.tabs-showmore-btn';
     let loadMoreButtonVisible = true;
@@ -30,7 +29,7 @@ async function scrapeBpiPromos() {
         await page.waitForSelector(loadMoreButtonSelector, { visible: true, timeout: 5000 });
         console.log('Clicking "Load More"');
         await page.click(loadMoreButtonSelector);
-        await new Promise(resolve => setTimeout(resolve, 3000)); // Wait for new content to load
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait for new content to load
       }
       catch (error) {
         // If the button is not found, we assume there are no more promos to load
@@ -53,140 +52,110 @@ async function scrapeBpiPromos() {
       return links;
     }, baseUrl);
 
-    console.log(`Found ${promoLinks.length} promo links.`);  
-
-    // STAGE 4: Visiting each promo link and extracting detailed info
-    const allPromoDetails = [];
-    // FULL SCRAPING: Processing all links
-    for (const link of promoLinks) {
-      try {
-        await page.goto(link, { waitUntil: 'networkidle2' });
-        const html = await page.content();
-        const $ = cheerio.load(html);
-
-        const title = $('h1.content__heading').text().trim();
-        const body = $('.text.aem-GridColumn--default--12 > div[data-cmp-data-layer]');
-
-        const bodyText = body.text();
-        const promoPeriod = getPromoPeriod(bodyText).promoPeriod;
-        
-        const offerMarker = body.find('h3').filter((i, el) => { // Handles inconsistent casing and formatting of the header "Promo Offer/Offer"
-          return $(el).text().toLowerCase().includes('offer');
-        });
-        const cardMarker = body.find('h3').filter((i, el) => {  // Handles inconsistent casing and formatting of the header "Promo Mechanics/Mechanics"
-          return $(el).text().toLowerCase().includes('mechanics');
-        });
-
-        const offerHeader = offerMarker.next('p').text().trim();
-        const offerDetails = [];
-
-        // Find the first UL after the offer header
-        const potentialOfferUl = offerMarker.nextAll('ul').first();
-
-        // Check if a potential UL was found AND if it appears before the mechanics section
-        // The .is() method checks if an element matches a selector.
-        // .prevAll() finds all preceding siblings.
-        if (potentialOfferUl.length && cardMarker.prevAll().is(potentialOfferUl)) {
-          potentialOfferUl.find('li').each((i, elem) => {
-            const listItemClone = $(elem).clone();
-            listItemClone.children('ul').remove();
-            const cleanedListItem = listItemClone.text().trim();
-            offerDetails.push(cleanedListItem);
-          });
-        }
-
-        
-        const cardLists = cardMarker.nextAll('ul').slice(0,3);
-        const structuredCards = [];
-
-        cardLists.each((i, ul) => {
-          $(ul).find('li').each((j, li) => {
-            const cardClone =  $(li).clone();
-            cardClone.children('ul').remove();
-            const cardNameClean = cardClone.text().trim();
-            if (cardNameClean) {
-              if (cardNameClean.toLowerCase().includes('cards')) {
-                return;
-              }
-              structuredCards.push(cardNameClean);
-            }
-          });
-        });
-
-        allPromoDetails.push({
-          title,
-          link,
-          promoPeriod,
-          offerHeader,
-          offerDetails,
-          structuredCards
-        });
-        console.log('Scraped --> ', title);
-      } catch (linkError) {
-        console.error('Failed to process link:', link, linkError);
-      }
-    }
-    console.log(allPromoDetails);
-    return allPromoDetails;
-
-  } catch (error) {
-    console.error('Error during scraping:', error);
+    console.log(`Found ${promoLinks.length} promo links.`);
+    return promoLinks
+  } catch (err){
+    console.error(err);
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (browser) await browser.close();
   }
-
 }
+
+async function scrapeBpiPromos(){
+    const allPromoDetails = [];
+    try {
+      // STAGE 1: Get the full list of links
+      const promoLinks = await fetchAllPromoLinks();
+
+      // STAGE 2: Process links in batches
+      const batchSize = 25;
+      for (let i = 0; i < promoLinks.length; i += batchSize) {
+        const batch = promoLinks.slice(i, i + batchSize);
+        
+        let browser;
+          try {
+            browser = await puppeteer.launch({ headless:true });
+            for (const link of batch) {
+              let detailPage = null;
+              try {
+                detailPage = await browser.newPage();
+                await detailPage.goto(link, { waitUntil: 'networkidle2', timeout: 30000});
+                const html = await detailPage.content();
+                const $ = cheerio.load(html);
+
+                const title = $('h1.content__heading').text().trim();
+                const body = $('.text.aem-GridColumn--default--12 > div[data-cmp-data-layer]');
+
+                const bodyText = body.text();
+                const promoPeriod = getPromoPeriod(bodyText).promoPeriod;
+                
+                const offerMarker = body.find('h3').filter((i, el) => { // Handles inconsistent casing and formatting of the header "Promo Offer/Offer"
+                  return $(el).text().toLowerCase().includes('offer');
+                });
+                const cardMarker = body.find('h3').filter((i, el) => {  // Handles inconsistent casing and formatting of the header "Promo Mechanics/Mechanics"
+                  return $(el).text().toLowerCase().includes('mechanics');
+                });
+
+                const offerHeader = offerMarker.next('p').text().trim();
+                const offerDetails = [];
+
+                // Find the first UL after the offer header
+                const potentialOfferUl = offerMarker.nextAll('ul').first();
+
+                // Check if a potential UL was found AND if it appears before the mechanics section
+                // The .is() method checks if an element matches a selector.
+                // .prevAll() finds all preceding siblings.
+                if (potentialOfferUl.length && cardMarker.prevAll().is(potentialOfferUl)) {
+                  potentialOfferUl.find('li').each((i, elem) => {
+                    const listItemClone = $(elem).clone();
+                    listItemClone.children('ul').remove();
+                    const cleanedListItem = listItemClone.text().trim();
+                    offerDetails.push(cleanedListItem);
+                  });
+                }
+                
+                const cardLists = cardMarker.nextAll('ul').slice(0,3);
+                const structuredCards = [];
+
+                cardLists.each((i, ul) => {
+                  $(ul).find('li').each((j, li) => {
+                    const cardClone =  $(li).clone();
+                    cardClone.children('ul').remove();
+                    const cardNameClean = cardClone.text().trim();
+                    if (cardNameClean) {
+                      if (cardNameClean.toLowerCase().includes('cards')) {
+                        return;
+                      }
+                      structuredCards.push(cardNameClean);
+                    }
+                  });
+                });
+                allPromoDetails.push({
+                title,
+                link,
+                promoPeriod,
+                offerHeader,
+                offerDetails,
+                structuredCards
+                });
+                console.log('Scraped --> ', title);
+              } catch (linkErr) {
+                console.error(`Failed to process link ${link}:`, linkErr.message);
+              } finally {
+                if (detailPage) await detailPage.close();
+              }
+            }
+          } finally {
+            if (browser) await browser.close()
+          }
+        }
+      console.log(allPromoDetails);
+      return allPromoDetails;
+    } catch (error) {
+      console.error('Error during scraping:', error);
+    }
+}
+
 scrapeBpiPromos()
 
 module.exports = { scrapeBpiPromos };
-
-
-
-    // TESTING: Only processing a single link
-    // const link = promoLinks[1];
-    // try{
-    //     await page.goto(link, { waitUntil: 'networkidle2' });
-    //     const html = await page.content();
-    //     const $ = cheerio.load(html);
-
-    //     const title = $('h1.content__heading').text().trim();
-    //     const body = $('.text.aem-GridColumn--default--12 > div[data-cmp-data-layer]');
-
-    //     const bodyText = body.text();
-    //     const promoPeriod = getPromoPeriod(bodyText).promoPeriod;
-
-    //     const offerMarker = body.find('h3:contains("Promo Offer")');
-    //     const offerHeader = offerMarker.next('p').text().trim();
-    //     const offerUl = offerMarker.nextAll('ul').first();
-    //     const offerDetails = [];
-
-    //     offerUl.find('li').each((i, elem) => {
-    //       // Iterates through each <li> element within the <ul>. Clones it, and removes nested <ul> element.
-
-    //       const listItemClone = $(elem).clone();
-    //       listItemClone.children('ul').remove(); // Remove any nested <ul> elements
-    //       const cleanedListItem = listItemClone.text().trim();
-          
-    //       offerDetails.push(cleanedListItem);
-    //     });
-
-    //     const cardMarker = body.find('h3:contains("Promo Mechanics")');
-    //     const cardText = cardMarker.nextAll('ul').text().trim();
-
-    //     const structuredCards = listCards(cardText);
-
-    //     allPromoDetails.push({
-    //       title,
-    //       link,
-    //       promoPeriod,
-    //       offerHeader,
-    //       offerDetails,
-    //       structuredCards
-    //     });
-
-    //   }
-    //   catch (error) {
-    //     console.error(`Error processing link ${link}:`, error);
-    //   }
