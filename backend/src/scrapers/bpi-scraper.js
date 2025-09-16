@@ -1,5 +1,8 @@
 const puppeteer = require('puppeteer');
 const cheerio = require('cheerio');
+const mongoose = require('mongoose');
+const Promo = require('../models/PromoModel.js');
+
 
 const { getPromoPeriod, normalizeOfferDetails } = require('./bpi-parser.js');
 
@@ -59,6 +62,36 @@ async function fetchAllPromoLinks() {
   } finally {
     if (browser) await browser.close();
   }
+}
+
+async function savePromosToDB(promoDataArray) {
+  if (!promoDataArray || promoDataArray.length === 0) {
+    console.log('No new promo details to save.');
+    return;
+  }
+  
+  console.log('Connecting to the database to save promos...');
+  await mongoose.connect(process.env.MONGO_URI);
+
+  let newPromos = 0;
+  let updatedPromos = 0;
+
+  for (const promoData of promoDataArray) {
+    const result = await Promo.findOneAndUpdate(
+      { link: promoData.link }, // Find by the unique link
+      promoData, // The new/updated data
+      { new: true, upsert: true } // Options
+    );
+
+    if (result.createdAt.getTime() === result.updatedAt.getTime()) {
+      newPromos++;
+    } else {
+      updatedPromos++;
+    }
+  }
+
+  console.log(`Database update complete. Added: ${newPromos}. Updated: ${updatedPromos}.`);
+  await mongoose.connection.close();
 }
 
 async function scrapeBpiPromos(){
@@ -149,13 +182,11 @@ async function scrapeBpiPromos(){
             if (browser) await browser.close()
           }
         }
+      await savePromosToDB(allPromoDetails);
       console.log(allPromoDetails);
       return allPromoDetails;
     } catch (error) {
       console.error('Error during scraping:', error);
     }
 }
-
-scrapeBpiPromos()
-
 module.exports = { scrapeBpiPromos };
