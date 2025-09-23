@@ -21,9 +21,9 @@
           {{ promo.promoPeriod }}
         </p>
         
-        <div class="details flex-grow">
+        <div class="flex-grow">
           <strong class="text-gray-700">Offer:</strong>
-          <pre class="bg-gray-50 p-3 rounded-md text-sm text-gray-600 mt-2">{{ promo.offer.rawText }}</pre>
+          <p class="bg-gray-50 p-3 rounded-md text-sm text-gray-600 mt-2">{{ promo.offer.header }}</p>
         </div>
         
         <a :href="promo.link" target="_blank" rel="noopener noreferrer" class="mt-4 font-bold text-blue-600 hover:text-blue-800 self-start">
@@ -44,7 +44,7 @@ const isLoading = ref(true);
 
 onMounted(async () => {
   try {
-    const response = await axios.get('http://localhost:5000/api/promos');
+    const response = await axios.get('http://localhost:3000/api/promos');
     promos.value = response.data;
   } catch (error) {
     console.error('Failed to fetch promos:', error);
