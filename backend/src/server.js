@@ -7,7 +7,7 @@ const { scrapeBpiPromos } = require('./scrapers/bpi-scraper.js');
 
 // Initialize the app
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors()); // Allows cross-origin requests
@@ -15,10 +15,7 @@ app.use(express.json()); // Allows us to parse JSON in the request body
 
 
 // --- 3. DATABASE CONNECTION ---
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
+mongoose.connect(process.env.MONGO_URI)
 .then(() => console.log('✅ MongoDB connected successfully!'))
 .catch(err => console.error('❌ MongoDB connection error:', err));
 

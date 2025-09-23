@@ -14,6 +14,6 @@ router.get('/', async (req, res) => {
 });
 
 // Route to fetch user data
-router.get('/user', getUserData);
+// router.get('/user', getUserData);
 
 module.exports = router;

@@ -1,3 +1,4 @@
+require('dotenv').config({ path: '../../.env' });
 const puppeteer = require('puppeteer');
 const cheerio = require('cheerio');
 const mongoose = require('mongoose');
@@ -72,6 +73,19 @@ async function savePromosToDB(promoDataArray) {
   
   console.log('Connecting to the database to save promos...');
   await mongoose.connect(process.env.MONGO_URI);
+  console.log('Imported Promo:', Promo);
+console.log('Type:', typeof Promo);
+console.log('Keys:', Object.keys(Promo || {}));
+console.log('Registered models:', mongoose.modelNames());
+
+
+    // ✅ Validation check
+  if (!Promo || typeof Promo.findOneAndUpdate !== 'function') {
+    console.error('❌ Promo model is invalid:', Promo);
+    throw new Error('Promo model is not a valid Mongoose model');
+  } else {
+    console.log('✅ Promo model loaded correctly.');
+  }
 
   let newPromos = 0;
   let updatedPromos = 0;
@@ -95,6 +109,8 @@ async function savePromosToDB(promoDataArray) {
 }
 
 async function scrapeBpiPromos(){
+  console.log('test');
+  console.log('📦 Promo import right after require:', Promo);
     const allPromoDetails = [];
     try {
       // STAGE 1: Get the full list of links
@@ -106,14 +122,15 @@ async function scrapeBpiPromos(){
         const batch = promoLinks.slice(i, i + batchSize);
         
         let browser;
+        let page;
           try {
             browser = await puppeteer.launch({ headless:true });
+            page = await browser.newPage();
             for (const link of batch) {
-              let detailPage = null;
               try {
-                detailPage = await browser.newPage();
-                await detailPage.goto(link, { waitUntil: 'networkidle2', timeout: 30000});
-                const html = await detailPage.content();
+                await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 30000});
+                await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
+                const html = await page.content();
                 const $ = cheerio.load(html);
 
                 const title = $('h1.content__heading').text().trim();
@@ -167,18 +184,21 @@ async function scrapeBpiPromos(){
                 title,
                 link,
                 promoPeriod,
-                offerHeader,
-                offerDetails,
-                structuredCards
+                offer: {
+                  header: offerHeader,
+                  details: offerDetails
+                },
+                participatingCards: structuredCards
                 });
                 console.log('Scraped --> ', title);
               } catch (linkErr) {
                 console.error(`Failed to process link ${link}:`, linkErr.message);
-              } finally {
-                if (detailPage) await detailPage.close();
               }
             }
+          } catch(batchErr) {
+            console.error(batchErr.message);
           } finally {
+            if (page) await page.close()
             if (browser) await browser.close()
           }
         }
