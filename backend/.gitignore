@@ -16,3 +16,5 @@ npm-debug.log*
 # These are generated automatically by macOS and Windows.
 .DS_Store
 Thumbs.db
+
+dist/
