@@ -108,7 +108,6 @@ console.log('Registered models:', mongoose.modelNames());
   }
 
   console.log(`Database update complete. Added: ${newPromos}. Updated: ${updatedPromos}.`);
-  await mongoose.connection.close();
 }
 
 async function scrapeBpiPromos(){
@@ -183,7 +182,7 @@ async function scrapeBpiPromos(){
                       if (cardNameClean.toLowerCase().includes('cards')) {
                         return;
                       }
-                      if (cardNameClean.toLowerCase().includes('card') && cardPrefixes.some(prefix => cardNameClean.toLowerCase.includes(prefix))) {
+                      if (cardNameClean.toLowerCase().includes('card') && cardPrefixes.some(prefix => cardNameClean.toLowerCase().includes(prefix))) {
                         const finalCard = cardNameClean.trim().replace(/[*]$/, '') // Removes asterisk
                         structuredCards.push(finalCard);
                       }
