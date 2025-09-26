@@ -14,7 +14,10 @@ async function fetchAllPromoLinks() {
     const baseUrl = 'https://www.bpi.com.ph';
     const listUrl = `${baseUrl}/personal/rewards-and-promotions/promos?tab=All&chip=Restaurants`;
     
-    browser = await puppeteer.launch({ headless: true });
+    browser = await puppeteer.launch({
+      headless: true, 
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
     const page = await browser.newPage();
     
     await page.goto(listUrl, { waitUntil: 'networkidle2' });
