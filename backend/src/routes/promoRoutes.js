@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const Promo = require('../models/PromoModel')
+const Promo = require('../models/Promo')
 
 // Route to fetch credit card promotions
 router.get('/', async (req, res) => {
