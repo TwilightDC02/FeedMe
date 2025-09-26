@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 const Promo = require('../models/Promo.js');
 
 
-const { getPromoPeriod, normalizeOfferDetails } = require('./bpi-parser.js');
+const { getPromoPeriod } = require('./bpi-parser.js');
 
 async function fetchAllPromoLinks() {
   let browser;
@@ -165,6 +165,7 @@ async function scrapeBpiPromos(){
                 }
                 
                 const cardLists = cardMarker.nextAll('ul').slice(0,3);
+                const cardPrefixes = ['bpi', 'robinsons', 'visa', 'mastercard', 'dos', 'petron'];
                 const structuredCards = [];
 
                 cardLists.each((i, ul) => {
@@ -176,7 +177,10 @@ async function scrapeBpiPromos(){
                       if (cardNameClean.toLowerCase().includes('cards')) {
                         return;
                       }
-                      structuredCards.push(cardNameClean);
+                      if (cardNameClean.toLowerCase().includes('card') && cardPrefixes.some(prefix => cardNameClean.toLowerCase.includes(prefix))) {
+                        const finalCard = cardNameClean.trim().replace(/[*]$/, '') // Removes asterisk
+                        structuredCards.push(finalCard);
+                      }
                     }
                   });
                 });
