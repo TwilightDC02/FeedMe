@@ -127,7 +127,10 @@ async function scrapeBpiPromos(){
         let browser;
         let page;
           try {
-            browser = await puppeteer.launch({ headless:true });
+            browser = await puppeteer.launch({
+              headless: true, 
+              args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
             page = await browser.newPage();
             for (const link of batch) {
               try {
