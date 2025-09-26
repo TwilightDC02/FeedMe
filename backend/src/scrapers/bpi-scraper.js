@@ -2,7 +2,7 @@ require('dotenv').config({ path: '../../.env' });
 const puppeteer = require('puppeteer');
 const cheerio = require('cheerio');
 const mongoose = require('mongoose');
-const Promo = require('../models/PromoModel.js');
+const Promo = require('../models/Promo.js');
 
 
 const { getPromoPeriod, normalizeOfferDetails } = require('./bpi-parser.js');
