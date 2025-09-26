@@ -98,7 +98,7 @@ const filteredPromos = computed(() => {
 
 onMounted(async () => {
   try {
-    const response = await axios.get('http://localhost:3000/api/promos');
+    const response = await axios.get('/api/promos');
     promos.value = response.data;
   } catch (error) {
     console.error('Failed to fetch promos:', error);
