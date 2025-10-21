@@ -51,7 +51,7 @@ async function fetchAllPromoLinks() {
         const relativeLink = card.getAttribute('href');
         if (relativeLink) {
           const periodContainer = card.parentElement.parentElement.previousElementSibling.querySelector('.tab-date-cont');
-          const detailsContainer = card.previousElementSibling;
+          const detailsContainer = card.parentElement.parentElement.querySelector('.tab-desc-cont .article-desc');
           if (periodContainer){
             promoPeriod = periodContainer.textContent.trim();
           }
@@ -376,7 +376,7 @@ async function scrapeBpiPromos(){
               participatingCards
             });
             
-            console.log(`Scraped: ${title} | Period: ${promoPeriod} | Cards: ${participatingCards.length}`);
+            console.log(`Scraped: ${title} | Details: ${promoDetails} | Period: ${promoPeriod} | Cards: ${participatingCards.length}`);
             
           } catch (linkErr) {
             console.error(`Failed to process link ${promo.link}:`, linkErr.message);
