@@ -6,9 +6,7 @@ function getPromoPeriod(bodyText) {
     promoPeriod = periodMatch[1].trim();
   }
 
-  return {
-    promoPeriod
-  };
+  return promoPeriod;
 }
 
 // Make the function available to other files

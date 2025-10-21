@@ -4,13 +4,11 @@ const cheerio = require('cheerio');
 const mongoose = require('mongoose');
 const Promo = require('../models/Promo.js');
 
-
-const { getPromoPeriod } = require('./bpi-parser.js');
+const { getPromoPeriod } = require('./bpi-parser.js')
 
 async function fetchAllPromoLinks() {
   let browser;
   try {
-    // STAGE 1: Browser initialization and page navigation
     const baseUrl = 'https://www.bpi.com.ph';
     const listUrl = `${baseUrl}/personal/rewards-and-promotions/promos?tab=All&chip=Restaurants`;
     
@@ -23,12 +21,11 @@ async function fetchAllPromoLinks() {
     await page.goto(listUrl, { waitUntil: 'networkidle2' });
     console.log('Now waiting for filter');
     
-    await page.waitForSelector('#All-tabpanel #Restaurants-chippanel.article-chip.active'); // Ensures the filter is selected
+    await page.waitForSelector('#All-tabpanel #Restaurants-chippanel.article-chip.active');
     console.log('Filter active');
-    await page.waitForSelector('.social-share--component-link.ga'); // Ensures at least one promo card is loaded
+    await page.waitForSelector('.social-share--component-link.ga');
     console.log('Page loaded, starting to scrape...');
     
-    // STAGE 2: Loading all of the promo cards by clicking "Load More" button    
     const loadMoreButtonSelector = '#All-tabpanel .btn.tabs-showmore-btn';
     let loadMoreButtonVisible = true;
     while (loadMoreButtonVisible) {
@@ -36,33 +33,32 @@ async function fetchAllPromoLinks() {
         await page.waitForSelector(loadMoreButtonSelector, { visible: true, timeout: 5000 });
         console.log('Clicking "Load More"');
         await page.click(loadMoreButtonSelector);
-        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait for new content to load
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
       catch (error) {
-        // If the button is not found, we assume there are no more promos to load
         loadMoreButtonVisible = false;
-        console.error('No more "Load More" buttons found.');
+        console.log('No more "Load More" buttons found.');
       }
     }    
 
-    // STAGE 3: Extracting promo links and details
     let promoLinks = await page.evaluate((baseUrl) => {
       const links = [];
-      const promoCards = document.querySelectorAll('#All-tabpanel .social-share--component-link.ga'); // Select all promo cards
+      const promoCards = document.querySelectorAll('#All-tabpanel .social-share--component-link.ga');
       
       promoCards.forEach(card => {
         const relativeLink = card.getAttribute('href');
         if (relativeLink) {
-          links.push(`${baseUrl}${relativeLink}`); // Construct full URL
+          links.push(`${baseUrl}${relativeLink}`);
         }
       });
       return links;
     }, baseUrl);
 
     console.log(`Found ${promoLinks.length} promo links.`);
-    return promoLinks
+    return promoLinks;
   } catch (err){
     console.error(err);
+    return [];
   } finally {
     if (browser) await browser.close();
   }
@@ -76,18 +72,10 @@ async function savePromosToDB(promoDataArray) {
   
   console.log('Connecting to the database to save promos...');
   await mongoose.connect(process.env.MONGO_URI);
-  console.log('Imported Promo:', Promo);
-console.log('Type:', typeof Promo);
-console.log('Keys:', Object.keys(Promo || {}));
-console.log('Registered models:', mongoose.modelNames());
 
-
-    // ✅ Validation check
   if (!Promo || typeof Promo.findOneAndUpdate !== 'function') {
-    console.error('❌ Promo model is invalid:', Promo);
+    console.error('Promo model is invalid:', Promo);
     throw new Error('Promo model is not a valid Mongoose model');
-  } else {
-    console.log('✅ Promo model loaded correctly.');
   }
 
   let newPromos = 0;
@@ -95,9 +83,9 @@ console.log('Registered models:', mongoose.modelNames());
 
   for (const promoData of promoDataArray) {
     const result = await Promo.findOneAndUpdate(
-      { link: promoData.link }, // Find by the unique link
-      promoData, // The new/updated data
-      { new: true, upsert: true } // Options
+      { link: promoData.link },
+      promoData,
+      { new: true, upsert: true }
     );
 
     if (result.createdAt.getTime() === result.updatedAt.getTime()) {
@@ -110,112 +98,288 @@ console.log('Registered models:', mongoose.modelNames());
   console.log(`Database update complete. Added: ${newPromos}. Updated: ${updatedPromos}.`);
 }
 
-async function scrapeBpiPromos(){
-  console.log('test');
-  console.log('📦 Promo import right after require:', Promo);
-    const allPromoDetails = [];
-    try {
-      // STAGE 1: Get the full list of links
-      const promoLinks = await fetchAllPromoLinks();
+// IMPROVED: Extract promo period and clean up spacing issues
+function extractPromoPeriod(bodyText) {
+  // First, normalize the text by removing excess whitespace
+  const normalizedText = bodyText.replace(/\s+/g, ' ').trim();
+  
+  let promoPeriod = getPromoPeriod(normalizedText)
+  if (promoPeriod){
+    return promoPeriod
+  }
+  else {
+  return 'Ongoing'; 
+  }
+}
 
-      // STAGE 2: Process links in batches
-      const batchSize = 25;
-      for (let i = 0; i < promoLinks.length; i += batchSize) {
-        const batch = promoLinks.slice(i, i + batchSize);
+// Extract ONLY credit cards with strict validation
+function extractCreditCards($, body) {
+  const creditCards = [];
+  const validCardPrefixes = ['bpi', 'robinsons', 'visa', 'mastercard', 'petron', 'dos', 'amore', 'simple', 'pru'];
+  
+  // UNIFIED CONSTANTS: Define these once to use everywhere for consistency.
+  const excludePatterns = [
+    'valid for', 'only from', 'mondays to', "father's day", 'fridays',
+    'saturdays', 'sundays', 'dine-in', 'website and search', 'search for',
+    'shop anywhere', 'mastercard shop'
+  ];
+  const genericTerms = [
+    'cards', 'credit cards', 'debit cards', 'prepaid cards',
+    'mastercard credit card', 'visa credit card', 'bpi credit cards',
+    'robinsons bank credit cards'
+  ];
+
+  const mechanicsMarker = body.find('h3').filter((i, el) => {
+    return $(el).text().toLowerCase().includes('mechanics');
+  });
+
+  if (mechanicsMarker.length > 0) {
+    // Check UL lists
+    const cardLists = mechanicsMarker.nextAll('ul').slice(0, 3);
+    
+    const nonBoldItems = cardLists.filter((i, el) => {
+      return $(el).find('b, strong').length === 0;
+    })
+
+    nonBoldItems.each((i, ul) => {
+      $(ul).find('li').each((j, li) => {
+        const $li = $(li);
         
-        let browser;
-        let page;
+        if ($li.is('b, strong') || $li.children().first().is('b, strong')) return;
+        
+        const htmlContent = $li.html();
+        if (htmlContent && (htmlContent.startsWith('<b>') || htmlContent.startsWith('<strong>'))) return;
+
+        let cardNameClean = $li.clone().children('ul').remove().end().text().trim();
+        
+        if (!cardNameClean) return;
+        
+        cardNameClean = cardNameClean.replace(/\s+/g, ' ').trim();
+        const lowerText = cardNameClean.toLowerCase();
+        
+        if (lowerText.includes(' or ') || lowerText.includes(' and ')) return;
+        
+        // Use the unified heading rule
+        if (lowerText.endsWith('cards') && cardNameClean.split(' ').length <= 4) return;
+        
+        // Use the unified generic terms
+        if (genericTerms.includes(lowerText)) return;
+        if (!lowerText.includes('card')) return;
+        
+        // Use the unified exclude patterns
+        if (excludePatterns.some(pattern => lowerText.includes(pattern))) return;
+        
+        const hasValidPrefix = validCardPrefixes.some(prefix => lowerText.includes(prefix));
+        if (!hasValidPrefix) return;
+        
+        cardNameClean = cardNameClean.replace(/[*]+$/g, '').trim();
+        
+        if (cardNameClean.length < 12 || cardNameClean.length > 40) return;
+        
+        const wordCount = cardNameClean.split(/\s+/).length;
+        if (wordCount < 2 || wordCount > 6) return;
+        
+        const normalized = cardNameClean.toLowerCase().replace(/\s+/g, '');
+        const isDuplicate = creditCards.some(existingCard => {
+          const normalizedExisting = existingCard.toLowerCase().replace(/\s+/g, '');
+          return normalizedExisting === normalized;
+        });
+        
+        if (!isDuplicate) {
+          creditCards.push(cardNameClean);
+        }
+      });
+    });
+
+    // Check <p> tags after mechanics marker
+    const cardParagraphs = mechanicsMarker.nextAll('p');
+
+    const nonBoldParagraphs = cardParagraphs.filter((index, element) => {
+      return $(element).find('b, strong').length === 0;
+    });
+
+    nonBoldParagraphs.each((i, p) => {
+      const $p = $(p);
+      if ($p.is('b, strong') || $p.children().first().is('b, strong')) return;
+      
+      const htmlContent = $p.html();
+      if (htmlContent && (htmlContent.startsWith('<b>') || htmlContent.startsWith('<strong>'))) return;
+      
+      let text = $p.text().trim();
+      if (!text) return;
+      
+      text = text.replace(/^[\d]+\.\s*/g, '').trim();
+      text = text.replace(/^[•·∙○●◦▪▫■□‣⁃−-]\s*/g, '').trim();
+      text = text.replace(/\s+/g, ' ').trim();
+      const lowerText = text.toLowerCase();
+      
+      if (!lowerText.includes('card')) return;
+      
+      // CHANGE: Replaced the aggressive heading filter with the more nuanced one.
+      if (lowerText.endsWith('cards') && text.split(' ').length <= 4) return;
+      
+      if (lowerText.includes(' or ') || lowerText.includes(' and ')) return;
+      
+      // Use the unified generic terms
+      if (genericTerms.includes(lowerText)) return;
+      
+      // Use the unified exclude patterns
+      if (excludePatterns.some(pattern => lowerText.includes(pattern))) return;
+      
+      const hasValidPrefix = validCardPrefixes.some(prefix => lowerText.includes(prefix));
+      if (!hasValidPrefix) return;
+      
+      text = text.replace(/[*]+$/g, '').trim();
+      
+      if (text.length < 12 || text.length > 40) return;
+      
+      const wordCount = text.split(/\s+/).length;
+      if (wordCount < 2 || wordCount > 6) return;
+      
+      const normalized = text.toLowerCase().replace(/\s+/g, '');
+      const isDuplicate = creditCards.some(existingCard => {
+        const normalizedExisting = existingCard.toLowerCase().replace(/\s+/g, '');
+        return normalizedExisting === normalized;
+      });
+      
+      if (!isDuplicate) {
+        creditCards.push(text);
+      }
+    });
+  }
+
+  // Fallback
+  if (creditCards.length === 0) {
+    body.find('li, p').each((i, elem) => {
+      // Use the safer method to get text that ignores nested lists
+      let text = $(elem).clone().children('ul').remove().end().text().trim();
+      
+      text = text.replace(/\s+/g, ' ').trim();
+      const lowerText = text.toLowerCase();
+      
+      if (!text || text.length < 12 || text.length > 40) return;
+      if (!lowerText.includes('card')) return;
+      if (lowerText.includes(' or ') || lowerText.includes(' and ')) return;
+      
+      // --- ADDED: All the missing checks to make the fallback safer ---
+      if (excludePatterns.some(pattern => lowerText.includes(pattern))) return;
+      if (genericTerms.includes(lowerText)) return;
+      if (lowerText.endsWith('cards') && text.split(' ').length <= 4) return;
+      // --- End of Added Checks ---
+      
+      const hasValidPrefix = validCardPrefixes.some(prefix => lowerText.includes(prefix));
+      if (!hasValidPrefix) return;
+      
+      const wordCount = text.split(/\s+/).length;
+      if (wordCount < 2 || wordCount > 6) return;
+      
+      const cleanCard = text.replace(/[*]+$/g, '').trim();
+      
+      const normalized = cleanCard.toLowerCase().replace(/\s+/g, '');
+      const isDuplicate = creditCards.some(existingCard => {
+        const normalizedExisting = existingCard.toLowerCase().replace(/\s+/g, '');
+        return normalizedExisting === normalized;
+      });
+      
+      if (!isDuplicate) {
+        creditCards.push(cleanCard);
+      }
+    });
+  }
+
+  return creditCards.length > 0 ? creditCards : ['BPI Credit Card'];
+}
+
+async function scrapeBpiPromos(){
+  console.log('Starting simplified BPI promo scraper...');
+  const allPromoDetails = [];
+  
+  try {
+    const promoLinks = await fetchAllPromoLinks();
+
+    if (!promoLinks || promoLinks.length === 0) {
+      console.log('No promo links found.');
+      return [];
+    }
+
+    const batchSize = 25;
+    for (let i = 0; i < promoLinks.length; i += batchSize) {
+      const batch = promoLinks.slice(i, i + batchSize);
+      
+      let browser;
+      let page;
+      
+      try {
+        browser = await puppeteer.launch({
+          headless: true, 
+          args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
+        page = await browser.newPage();
+        
+        for (const link of batch) {
           try {
-            browser = await puppeteer.launch({
-              headless: true, 
-              args: ['--no-sandbox', '--disable-setuid-sandbox']
-            });
-            page = await browser.newPage();
-            for (const link of batch) {
-              try {
-                await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 30000});
-                await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
-                const html = await page.content();
-                const $ = cheerio.load(html);
+            await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 30000});
+            await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
+            const html = await page.content();
+            const $ = cheerio.load(html);
 
-                const title = $('h1.content__heading').text().trim();
-                const body = $('.text.aem-GridColumn--default--12 > div[data-cmp-data-layer]');
-
-                const bodyText = body.text();
-                const promoPeriod = getPromoPeriod(bodyText).promoPeriod;
-                
-                const offerMarker = body.find('h3').filter((i, el) => { // Handles inconsistent casing and formatting of the header "Promo Offer/Offer"
-                  return $(el).text().toLowerCase().includes('offer');
-                });
-                const cardMarker = body.find('h3').filter((i, el) => {  // Handles inconsistent casing and formatting of the header "Promo Mechanics/Mechanics"
-                  return $(el).text().toLowerCase().includes('mechanics');
-                });
-
-                const offerHeader = offerMarker.next('p').text().trim();
-                const offerDetails = [];
-
-                // Find the first UL after the offer header
-                const potentialOfferUl = offerMarker.nextAll('ul').first();
-
-                // Check if a potential UL was found AND if it appears before the mechanics section
-                // The .is() method checks if an element matches a selector.
-                // .prevAll() finds all preceding siblings.
-                if (potentialOfferUl.length && cardMarker.prevAll().is(potentialOfferUl)) {
-                  potentialOfferUl.find('li').each((i, elem) => {
-                    const listItemClone = $(elem).clone();
-                    listItemClone.children('ul').remove();
-                    const cleanedListItem = listItemClone.text().trim();
-                    offerDetails.push(cleanedListItem);
-                  });
-                }
-                
-                const cardLists = cardMarker.nextAll('ul').slice(0,3);
-                const cardPrefixes = ['bpi', 'robinsons', 'visa', 'mastercard', 'dos', 'petron'];
-                const structuredCards = [];
-
-                cardLists.each((i, ul) => {
-                  $(ul).find('li').each((j, li) => {
-                    const cardClone =  $(li).clone();
-                    cardClone.children('ul').remove();
-                    const cardNameClean = cardClone.text().trim();
-                    if (cardNameClean) {
-                      if (cardNameClean.toLowerCase().includes('cards')) {
-                        return;
-                      }
-                      if (cardNameClean.toLowerCase().includes('card') && cardPrefixes.some(prefix => cardNameClean.toLowerCase().includes(prefix))) {
-                        const finalCard = cardNameClean.trim().replace(/[*]$/, '') // Removes asterisk
-                        structuredCards.push(finalCard);
-                      }
-                    }
-                  });
-                });
-                allPromoDetails.push({
-                title,
-                link,
-                promoPeriod,
-                offer: {
-                  header: offerHeader,
-                  details: offerDetails
-                },
-                participatingCards: structuredCards
-                });
-                console.log('Scraped --> ', title);
-              } catch (linkErr) {
-                console.error(`Failed to process link ${link}:`, linkErr.message);
-              }
+            // Extract title
+            const title = $('h1.content__heading').text().trim();
+            
+            if (!title) {
+              console.warn(`Skipped ${link} - no title found`);
+              continue;
             }
-          } catch(batchErr) {
-            console.error(batchErr.message);
-          } finally {
-            if (page) await page.close()
-            if (browser) await browser.close()
+
+            // Find body content with fallbacks
+            let body = $('.text.aem-GridColumn--default--12 > div[data-cmp-data-layer]');
+            if (body.length === 0) {
+              body = $('.text.aem-GridColumn--default--12');
+            }
+            if (body.length === 0) {
+              body = $('main .text');
+            }
+
+            const bodyText = body.text();
+
+            // Extract only what we need
+            const promoPeriod = extractPromoPeriod(bodyText);
+            const participatingCards = extractCreditCards($, body);
+
+            // Build minimal promo object
+            allPromoDetails.push({
+              title,
+              link,
+              promoPeriod,
+              offer: {
+                header: 'Click to view full promo details',
+                details: []
+              },
+              participatingCards
+            });
+            
+            console.log(`Scraped: ${title} | Period: ${promoPeriod} | Cards: ${participatingCards.length}`);
+            
+          } catch (linkErr) {
+            console.error(`Failed to process link ${link}:`, linkErr.message);
           }
         }
-      await savePromosToDB(allPromoDetails);
-      console.log(allPromoDetails);
-      return allPromoDetails;
-    } catch (error) {
-      console.error('Error during scraping:', error);
+      } catch(batchErr) {
+        console.error('Batch error:', batchErr.message);
+      } finally {
+        if (page) await page.close();
+        if (browser) await browser.close();
+      }
     }
+    
+    await savePromosToDB(allPromoDetails);
+    console.log(`Successfully scraped ${allPromoDetails.length} promos`);
+    return allPromoDetails;
+    
+  } catch (error) {
+    console.error('Error during scraping:', error);
+    return [];
+  }
 }
+
 module.exports = { scrapeBpiPromos };

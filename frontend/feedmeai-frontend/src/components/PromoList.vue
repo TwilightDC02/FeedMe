@@ -98,10 +98,13 @@ const filteredPromos = computed(() => {
 
 onMounted(async () => {
   try {
-    const response = await axios.get('/api/promos');
-    promos.value = response.data;
+    const response = await axios.get('http://localhost:3000/api/promos');
+    // Ensure it's always an array
+    promos.value = Array.isArray(response.data) ? response.data : [];
+    console.log('Loaded promos:', promos.value.length);
   } catch (error) {
     console.error('Failed to fetch promos:', error);
+    promos.value = []; // Fallback to empty array
   } finally {
     isLoading.value = false;
   }
