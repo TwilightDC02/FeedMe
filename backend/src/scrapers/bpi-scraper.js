@@ -42,16 +42,32 @@ async function fetchAllPromoLinks() {
     }    
 
     let promoLinks = await page.evaluate((baseUrl) => {
-      const links = [];
+      const promos = [];
       const promoCards = document.querySelectorAll('#All-tabpanel .social-share--component-link.ga');
       
       promoCards.forEach(card => {
+        let promoPeriod = 'Not found';
+        let promoDetails = 'More details in the link';
         const relativeLink = card.getAttribute('href');
         if (relativeLink) {
-          links.push(`${baseUrl}${relativeLink}`);
+          const periodContainer = card.parentElement.parentElement.previousElementSibling.querySelector('.tab-date-cont');
+          const detailsContainer = card.previousElementSibling;
+          if (periodContainer){
+            promoPeriod = periodContainer.textContent.trim();
+          }
+          if (detailsContainer){
+            promoDetails = detailsContainer.textContent.trim();
+          }
+          promos.push({
+            link: `${baseUrl}${relativeLink}`,
+            promoPeriod: promoPeriod,
+            details: promoDetails
+          })
+
         }
+
       });
-      return links;
+      return promos;
     }, baseUrl);
 
     console.log(`Found ${promoLinks.length} promo links.`);
@@ -316,9 +332,9 @@ async function scrapeBpiPromos(){
         });
         page = await browser.newPage();
         
-        for (const link of batch) {
+        for (const promo of batch) {
           try {
-            await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 30000});
+            await page.goto(promo.link, { waitUntil: 'domcontentloaded', timeout: 30000});
             await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
             const html = await page.content();
             const $ = cheerio.load(html);
@@ -327,7 +343,7 @@ async function scrapeBpiPromos(){
             const title = $('h1.content__heading').text().trim();
             
             if (!title) {
-              console.warn(`Skipped ${link} - no title found`);
+              console.warn(`Skipped ${promo.link} - no title found`);
               continue;
             }
 
@@ -343,8 +359,10 @@ async function scrapeBpiPromos(){
             const bodyText = body.text();
 
             // Extract only what we need
-            const promoPeriod = extractPromoPeriod(bodyText);
+            const link = promo.link;
+            const promoPeriod = promo.promoPeriod;
             const participatingCards = extractCreditCards($, body);
+            const promoDetails = promo.details;
 
             // Build minimal promo object
             allPromoDetails.push({
@@ -352,7 +370,7 @@ async function scrapeBpiPromos(){
               link,
               promoPeriod,
               offer: {
-                header: 'Click to view full promo details',
+                header: promoDetails,
                 details: []
               },
               participatingCards
@@ -361,7 +379,7 @@ async function scrapeBpiPromos(){
             console.log(`Scraped: ${title} | Period: ${promoPeriod} | Cards: ${participatingCards.length}`);
             
           } catch (linkErr) {
-            console.error(`Failed to process link ${link}:`, linkErr.message);
+            console.error(`Failed to process link ${promo.link}:`, linkErr.message);
           }
         }
       } catch(batchErr) {

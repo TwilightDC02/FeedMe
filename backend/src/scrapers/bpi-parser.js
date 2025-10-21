@@ -1,13 +1,24 @@
 function getPromoPeriod(bodyText) {
-  // --- 1. Extract the Promo Period ---
-  let promoPeriod = 'Not found';
-  const periodMatch = bodyText.match(/Promo Period is from (.*?)(?:\.|\n)/i);
-  if (periodMatch && periodMatch[1]) {
-    promoPeriod = periodMatch[1].trim();
+  // Normalize whitespace first
+  const normalizedText = bodyText.replace(/\s+/g, ' ').trim();
+  
+  // Pattern 1: "Promo Period is from ... to ..."
+  let match = normalizedText.match(/Promo Period is from\s+(.*?)\s+(?:to|until)\s+(.*?)(?:\s+Step|\.|;|$)/i);
+  if (match && match[1] && match[2]) {
+    const start = match[1].trim();
+    const end = match[2].trim();
+    return `${start} to ${end}`;
   }
 
-  return promoPeriod;
+  // Pattern 2: "Valid from ... to ..."
+  match = normalizedText.match(/Valid from\s+(.*?)\s+(?:to|until)\s+(.*?)(?:\s+Step|\.|;|$)/i);
+  if (match && match[1] && match[2]) {
+    const start = match[1].trim();
+    const end = match[2].trim();
+    return `${start} to ${end}`;
+  }
+
+  return 'Not found';
 }
 
-// Make the function available to other files
 module.exports = { getPromoPeriod };
